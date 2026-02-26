@@ -47,6 +47,22 @@ X-Ray console, service map, and custom dashboard.
 
 ## Prerequisites
 
+### Install required tools (macOS via Homebrew)
+
+```bash
+# AWS CLI v2
+brew install awscli
+
+# AWS SAM CLI >= 1.90
+brew tap aws/tap
+brew install aws-sam-cli
+
+# Node.js 18+ (local testing only)
+brew install node@18
+```
+
+### Verify installations
+
 ```bash
 # Required tools
 aws --version         # AWS CLI v2
