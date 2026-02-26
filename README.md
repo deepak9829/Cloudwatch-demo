@@ -70,12 +70,22 @@ sam --version         # AWS SAM CLI >= 1.90
 node --version        # Node.js 18+ (local testing only)
 ```
 
-Ensure your AWS credentials are configured:
+### Configure AWS credentials
 
 ```bash
-aws configure          # or set AWS_PROFILE / AWS_REGION env vars
-aws sts get-caller-identity   # verify credentials are working
+# Create a named profile for this demo
+aws configure --profile cloudwatch-demo
+# Prompts for: AWS Access Key ID, Secret Access Key, Region (e.g. us-east-1), Output format (json)
+
+# Export the profile so all aws/sam commands pick it up automatically
+export AWS_PROFILE=cloudwatch-demo
+export AWS_REGION=us-east-1   # optional — override default region
+
+# Verify credentials are working
+aws sts get-caller-identity
 ```
+
+> Add `export AWS_PROFILE=cloudwatch-demo` to your shell profile (`~/.zshrc` or `~/.bashrc`) to make it permanent.
 
 ---
 
