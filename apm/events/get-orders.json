@@ -1,0 +1,10 @@
+{
+  "httpMethod": "GET",
+  "path": "/orders",
+  "queryStringParameters": {
+    "limit": "10"
+  },
+  "pathParameters": null,
+  "body": null,
+  "isBase64Encoded": false
+}

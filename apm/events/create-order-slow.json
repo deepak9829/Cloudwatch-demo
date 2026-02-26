@@ -1,0 +1,10 @@
+{
+  "httpMethod": "POST",
+  "path": "/orders",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\"customerId\": \"CUST-0099\", \"productId\": \"PROD-003\", \"quantity\": 1}",
+  "isBase64Encoded": false,
+  "_comment": "PROD-003 has 300-800ms simulated DB latency — good for p99 traces"
+}

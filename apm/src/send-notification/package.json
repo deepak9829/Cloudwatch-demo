@@ -1,0 +1,9 @@
+{
+  "name": "send-notification",
+  "version": "1.0.0",
+  "description": "CloudWatch APM demo – send-notification Lambda",
+  "main": "index.js",
+  "dependencies": {
+    "aws-xray-sdk-core": "^3.6.0"
+  }
+}

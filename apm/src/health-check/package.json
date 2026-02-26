@@ -1,0 +1,7 @@
+{
+  "name": "health-check",
+  "version": "1.0.0",
+  "description": "CloudWatch APM demo – health-check Lambda",
+  "main": "index.js",
+  "dependencies": {}
+}

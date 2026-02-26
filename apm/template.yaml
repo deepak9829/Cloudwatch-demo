@@ -1,0 +1,261 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  CloudWatch APM Demo - Distributed Tracing with AWS X-Ray
+  Microservices: create-order → check-inventory + send-notification + DynamoDB
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 30
+    MemorySize: 256
+    Tracing: Active
+    Environment:
+      Variables:
+        TABLE_NAME: !Ref OrdersTable
+        AWS_NODEJS_CONNECTION_REUSE_ENABLED: "1"
+        NODE_ENV: production
+    Tags:
+      caylent:owner: deepak.saini@caylent.com
+
+Resources:
+
+  # ─── API Gateway ──────────────────────────────────────────────────────────
+  DemoApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      TracingEnabled: true
+      Description: CloudWatch APM Demo API
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amzn-Trace-Id'"
+        AllowOrigin: "'*'"
+      Tags:
+        caylent:owner: deepak.saini@caylent.com
+
+  # ─── DynamoDB Table ────────────────────────────────────────────────────────
+  OrdersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "cw-apm-demo-orders-${AWS::StackName}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: orderId
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: orderId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: status-createdAt-index
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: "caylent:owner"
+          Value: deepak.saini@caylent.com
+
+  # ─── Lambda Functions ─────────────────────────────────────────────────────
+
+  CreateOrderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "cw-apm-create-order-${AWS::StackName}"
+      CodeUri: src/create-order/
+      Handler: index.handler
+      Description: Receives order requests, orchestrates inventory + notification
+      Environment:
+        Variables:
+          CHECK_INVENTORY_FUNCTION: !GetAtt CheckInventoryFunction.Arn
+          SEND_NOTIFICATION_FUNCTION: !GetAtt SendNotificationFunction.Arn
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref OrdersTable
+        - LambdaInvokePolicy:
+            FunctionName: !Ref CheckInventoryFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref SendNotificationFunction
+      Events:
+        PostOrder:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DemoApi
+            Path: /orders
+            Method: POST
+
+  CheckInventoryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "cw-apm-check-inventory-${AWS::StackName}"
+      CodeUri: src/check-inventory/
+      Handler: index.handler
+      Description: Simulates inventory lookup with variable latency per product type
+      Timeout: 15
+
+  SendNotificationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "cw-apm-send-notification-${AWS::StackName}"
+      CodeUri: src/send-notification/
+      Handler: index.handler
+      Description: Simulates sending order confirmation (email/SMS) with occasional faults
+      Timeout: 10
+
+  GetOrdersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "cw-apm-get-orders-${AWS::StackName}"
+      CodeUri: src/get-orders/
+      Handler: index.handler
+      Description: Queries orders from DynamoDB with optional status filter
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref OrdersTable
+      Events:
+        GetOrders:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DemoApi
+            Path: /orders
+            Method: GET
+        GetOrderById:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DemoApi
+            Path: /orders/{orderId}
+            Method: GET
+
+  HealthCheckFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "cw-apm-health-${AWS::StackName}"
+      CodeUri: src/health-check/
+      Handler: index.handler
+      Description: Health check endpoint to verify API availability
+      Events:
+        Health:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DemoApi
+            Path: /health
+            Method: GET
+
+  # ─── CloudWatch Application Insights ─────────────────────────────────────
+  ApplicationInsightsApp:
+    Type: AWS::ApplicationInsights::Application
+    Properties:
+      ResourceGroupName: !Sub "cw-apm-demo-${AWS::StackName}"
+      AutoConfigurationEnabled: true
+      CWEMonitorEnabled: true
+      OpsCenterEnabled: false
+      Tags:
+        - Key: "caylent:owner"
+          Value: deepak.saini@caylent.com
+
+  ApplicationResourceGroup:
+    Type: AWS::ResourceGroups::Group
+    Properties:
+      Name: !Sub "cw-apm-demo-${AWS::StackName}"
+      ResourceQuery:
+        Type: CLOUDFORMATION_STACK_1_0
+      Tags:
+        - Key: "caylent:owner"
+          Value: deepak.saini@caylent.com
+
+  # ─── CloudWatch Dashboard ─────────────────────────────────────────────────
+  MonitoringDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub "CloudWatch-APM-Demo-${AWS::StackName}"
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "properties": {
+                "title": "Lambda Invocations & Errors",
+                "region": "${AWS::Region}",
+                "metrics": [
+                  ["AWS/Lambda", "Invocations", "FunctionName", "${CreateOrderFunction}", {"stat": "Sum", "period": 60}],
+                  ["AWS/Lambda", "Errors",      "FunctionName", "${CreateOrderFunction}", {"stat": "Sum", "period": 60, "color": "#d62728"}],
+                  ["AWS/Lambda", "Invocations", "FunctionName", "${CheckInventoryFunction}", {"stat": "Sum", "period": 60}],
+                  ["AWS/Lambda", "Invocations", "FunctionName", "${SendNotificationFunction}", {"stat": "Sum", "period": 60}]
+                ],
+                "view": "timeSeries",
+                "period": 60
+              }
+            },
+            {
+              "type": "metric",
+              "properties": {
+                "title": "Lambda Duration (P50/P99)",
+                "region": "${AWS::Region}",
+                "metrics": [
+                  ["AWS/Lambda", "Duration", "FunctionName", "${CreateOrderFunction}", {"stat": "p50"}],
+                  ["AWS/Lambda", "Duration", "FunctionName", "${CreateOrderFunction}", {"stat": "p99", "color": "#ff7f0e"}],
+                  ["AWS/Lambda", "Duration", "FunctionName", "${CheckInventoryFunction}", {"stat": "p99"}],
+                  ["AWS/Lambda", "Duration", "FunctionName", "${SendNotificationFunction}", {"stat": "p99"}]
+                ],
+                "view": "timeSeries",
+                "period": 60
+              }
+            },
+            {
+              "type": "metric",
+              "properties": {
+                "title": "API Gateway Latency & 4xx/5xx",
+                "region": "${AWS::Region}",
+                "metrics": [
+                  ["AWS/ApiGateway", "Latency",  "ApiName", "DemoApi", {"stat": "p99"}],
+                  ["AWS/ApiGateway", "4XXError",  "ApiName", "DemoApi", {"stat": "Sum", "color": "#ff7f0e"}],
+                  ["AWS/ApiGateway", "5XXError",  "ApiName", "DemoApi", {"stat": "Sum", "color": "#d62728"}]
+                ],
+                "view": "timeSeries",
+                "period": 60
+              }
+            },
+            {
+              "type": "metric",
+              "properties": {
+                "title": "DynamoDB Read/Write Units",
+                "region": "${AWS::Region}",
+                "metrics": [
+                  ["AWS/DynamoDB", "ConsumedReadCapacityUnits",  "TableName", "${OrdersTable}", {"stat": "Sum"}],
+                  ["AWS/DynamoDB", "ConsumedWriteCapacityUnits", "TableName", "${OrdersTable}", {"stat": "Sum"}]
+                ],
+                "view": "timeSeries",
+                "period": 60
+              }
+            }
+          ]
+        }
+
+# ─── Outputs ────────────────────────────────────────────────────────────────
+Outputs:
+  ApiUrl:
+    Description: "Base URL for the demo API"
+    Value: !Sub "https://${DemoApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+    Export:
+      Name: !Sub "${AWS::StackName}-ApiUrl"
+
+  OrdersTableName:
+    Description: "DynamoDB orders table name"
+    Value: !Ref OrdersTable
+
+  XRayConsoleUrl:
+    Description: "AWS X-Ray Service Map console link"
+    Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/xray/home?region=${AWS::Region}#/service-map"
+
+  CloudWatchDashboardUrl:
+    Description: "CloudWatch Dashboard URL"
+    Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=CloudWatch-APM-Demo-${AWS::StackName}"

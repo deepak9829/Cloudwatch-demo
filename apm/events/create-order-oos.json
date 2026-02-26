@@ -1,0 +1,10 @@
+{
+  "httpMethod": "POST",
+  "path": "/orders",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\"customerId\": \"CUST-0001\", \"productId\": \"PROD-004\", \"quantity\": 1}",
+  "isBase64Encoded": false,
+  "_comment": "PROD-004 has zero stock — always returns 409 Out of Stock"
+}

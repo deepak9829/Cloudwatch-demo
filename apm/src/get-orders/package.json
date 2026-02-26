@@ -1,0 +1,11 @@
+{
+  "name": "get-orders",
+  "version": "1.0.0",
+  "description": "CloudWatch APM demo – get-orders Lambda",
+  "main": "index.js",
+  "dependencies": {
+    "aws-xray-sdk-core": "^3.6.0",
+    "@aws-sdk/client-dynamodb": "^3.600.0",
+    "@aws-sdk/lib-dynamodb": "^3.600.0"
+  }
+}

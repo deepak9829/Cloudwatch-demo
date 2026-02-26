@@ -1,0 +1,9 @@
+{
+  "httpMethod": "POST",
+  "path": "/orders",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\"customerId\": \"CUST-VIP-007\", \"productId\": \"PROD-002\", \"quantity\": 1}",
+  "isBase64Encoded": false
+}
